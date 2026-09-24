@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 应用名称 -->
+    <string name="app_name">取件码识别</string>
+
+    <!-- 主界面（驿站取件码扫描定位） -->
+    <string name="input_hint">请输入收到的取件码，如 7-2-3001</string>
+    <string name="btn_photo_scan">拍照扫描</string>
+    <string name="btn_gallery_scan">相册扫描</string>
+    <string name="input_empty">请输入取件码后再扫描</string>
+    <string name="scan_status_tip">请输入收到的取件码后开始扫描</string>
+    <string name="camera_permission_denied">需要相机权限才能拍照扫描，请在系统设置中开启</string>
+    <string name="last_scan_found">找到！上次扫描命中：%1$s</string>
+    <string name="last_scan_not_found">上次扫描未找到：%1$s</string>
+    <string name="switch_fuzzy">字符容错</string>
+    <string name="switch_fuzzy_hint">开启后容忍 OCR 常见误识别（0/O、1/I、5/S 等）</string>
+
+    <!-- 扫描页 -->
+    <string name="image_capture_canceled">拍照已取消</string>
+    <string name="image_pick_canceled">未选择图片</string>
+    <string name="image_read_failed">图片读取失败</string>
+    <string name="image_recognize_failed">识别失败</string>
+    <string name="image_create_file_failed">无法创建拍照文件</string>
+
+    <!-- 扫描结果页 -->
+    <string name="found_title">找到！快递在驿站中</string>
+    <string name="found_mark">已找到</string>
+    <string name="not_found_title">未找到匹配取件码</string>
+    <string name="result_list_label">识别到的取件码</string>
+    <string name="result_list_empty">图中未识别到任何取件码</string>
+    <string name="btn_rescan">重新扫描</string>
+    <string name="copied">取件码已复制</string>
+
+    <!-- 实时扫描页（CameraX 实时预览逐帧识别） -->
+    <string name="btn_live_scan">实时扫描</string>
+    <string name="live_scan_target">当前指定取件码：%1$s</string>
+    <string name="live_scan_hint">将取件码标签对准相机，命中后画面标注红框并震动</string>
+    <string name="live_scan_found_mark">已找到</string>
+    <string name="live_scan_back">返回</string>
+    <string name="live_scan_lock">锁定</string>
+    <string name="live_scan_unlock">解锁</string>
+    <string name="live_scan_no_permission">需要相机权限才能实时扫描</string>
+    <string name="live_scan_camera_failed">相机启动失败，请检查相机权限</string>
+
+    <!-- 短信识别页（保留：短信功能不再从主界面进入） -->
+    <string name="sms_listening">短信监听已开启，收到快递短信后自动提取取件码</string>
+    <string name="sms_no_permission">未授予短信权限，无法监听快递短信</string>
+    <string name="sms_empty">尚未识别到取件码，收到快递短信后会自动显示在这里</string>
+</resources>

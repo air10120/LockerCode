@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider 路径声明：仅暴露本应用 cacheDir/captured 目录下的文件 -->
+<paths>
+    <cache-path
+        name="captured_images"
+        path="captured/" />
+</paths>

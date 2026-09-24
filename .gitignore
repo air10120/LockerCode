@@ -1,0 +1,36 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# 构建产物（含 app 模块）
+**/build
+/temp
+/temp_dl
+
+# 构建日志
+/build_log.txt
+/build_err.txt
+/build_out.txt
+/build_out2.txt
+
+# IDE 工程级配置文件
+.idea/
+.kotlin/
+/AndroidDomInspection.xml
+/LatestMinorVersion.xml
+/MarkdownIncorrectTableFormatting.xml
+/SpellCheckingInspection.xml
+/XmlHighlighting.xml
+/.descriptions.xml

@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 相机权限：用于拍照识别快递面单 -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- 震动权限（normal 级，无需运行时申请）：实时扫描命中取件码时震动反馈 -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- 短信权限：监听/读取快递取件短信 -->
+    <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+
+    <!--
+        读取存储权限：
+        - Android 13 (API 33) 及以上使用系统照片选择器，无需此权限
+        - Android 13 以下从相册选图需要（maxSdkVersion=32 限制）
+    -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.PickupCode">
+
+        <!-- 单 Activity 架构入口 -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+            短信广播接收器：拦截快递短信并提取取件码。
+            SMS_RECEIVED 属于系统豁免的隐式广播，静态注册 exported=false 也能收到；
+            这样其他应用无法向本接收器伪造广播。
+        -->
+        <receiver
+            android:name=".receiver.SmsReceiver"
+            android:exported="false">
+            <intent-filter android:priority="1000">
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+            FileProvider：系统相机拍照时输出到本应用私有缓存目录，
+            通过 content:// URI 安全共享给相机 App，无需存储权限
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+
+</manifest>

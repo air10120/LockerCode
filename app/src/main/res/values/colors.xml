@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 主题主色（紫色系） -->
+    <color name="purple_500">#FF6200EE</color>
+    <color name="purple_700">#FF3700B3</color>
+
+    <!-- 主题主色别名：顶部栏 / 强调色使用 -->
+    <color name="primary">#FF6200EE</color>
+
+    <!-- 基础颜色 -->
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- 文本颜色 -->
+    <color name="text_primary">#FF212121</color>
+    <color name="text_secondary">#FF757575</color>
+
+    <!-- 应用图标背景色（浅蓝，与取件码图标一致） -->
+    <color name="ic_launcher_background">#C8E1FB</color>
+</resources>
