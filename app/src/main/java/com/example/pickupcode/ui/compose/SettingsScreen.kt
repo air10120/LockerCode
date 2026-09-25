@@ -162,6 +162,11 @@ private data class ChangelogEntry(val version: String, val items: List<String>)
 /** 历史更新日志（按版本倒序） */
 private val CHANGELOG = listOf(
     ChangelogEntry(
+        "v1.0.12", listOf(
+            "修复：多目标识别框跨帧稳定，不再轮流闪烁"
+        )
+    ),
+    ChangelogEntry(
         "v1.0.11", listOf(
             "修复：识别框支持同时标注多个匹配目标",
             "新增：设置页个性化（标签文字大小滑块、标签位置、标签颜色、识别框颜色、识别框线宽滑块）"
