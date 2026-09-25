@@ -112,7 +112,30 @@ private const val AUTO_INTERVAL_MIN_MS = 150L         // 自动模式间隔下�
 private const val AUTO_INTERVAL_MAX_MS = 800L         // 自动模式间隔上限
 private const val CROP_RATIO = 0.05f           // 中央 90% ROI 裁剪（上下左右各去 5%）：扩大识别区域，多个快递分布开也能命中
 private const val HIT_HOLD_MS = 800L           // 命中后短暂保持标注
-private const val HIT_STROKE_DP = 6f           // 命中红框笔宽
+
+/** 默认命中框颜色（红） */
+private const val DEFAULT_HIT_COLOR = 0xFFE53935.toInt()
+
+/** 识别框颜色表：key 与 SettingsScreen 中 BOX_COLORS 一致 */
+private val BOX_COLORS: Map<String, Int> = mapOf(
+    "red" to 0xFFE53935.toInt(),
+    "green" to 0xFF43A047.toInt(),
+    "blue" to 0xFF1E88E5.toInt(),
+    "orange" to 0xFFFB8C00.toInt(),
+    "purple" to 0xFF8E24AA.toInt(),
+    "white" to Color.WHITE
+)
+
+/** 标签文字颜色表：key 与 SettingsScreen 中 LABEL_TEXT_COLORS 一致 */
+private val LABEL_TEXT_COLORS: Map<String, Int> = mapOf(
+    "white" to Color.WHITE,
+    "black" to Color.BLACK,
+    "red" to 0xFFE53935.toInt(),
+    "green" to 0xFF43A047.toInt(),
+    "blue" to 0xFF1E88E5.toInt(),
+    "orange" to 0xFFFB8C00.toInt(),
+    "purple" to 0xFF8E24AA.toInt()
+)
 private const val DEBOUNCE_FRAMES = 2          // 连续命中帧数达到该值才判定命中（去抖防误报）
 private const val DECODE_MAX_DIM = 1920        // 相册/拍照图片解码目标长边像素（防 OOM）
 
@@ -424,9 +447,9 @@ fun HomeScreen(
                             .matchParentSize()
                             .onSizeChanged { previewSize.value = it }
                     )
-                    // Compose Canvas 叠加标注（仅命中码粗红框 + 已找到标签，多个码全部框选）
+                    // Compose Canvas 叠加标注（所有匹配框 + 标签，样式跟随设置）
                     Canvas(Modifier.matchParentSize()) {
-                        drawOverlay(hitBoxes)
+                        drawOverlay(hitBoxes, settings)
                     }
                     // 预览区内顶部：目标码状态 + 锁定/解锁
                     Row(
@@ -703,50 +726,94 @@ internal fun PressableIconButton(onClick: () -> Unit, content: @Composable () ->
 }
 
 /**
- * 在 Compose Canvas 上绘制命中码的粗红框；「已找到」标签只画在最上方的命中框上，
- * 其余命中只画红框——避免多个标签互相遮挡、压住其他框。
+ * 在 Compose Canvas 上绘制所有命中框与「已找到」标签。
+ * 每个匹配文本块都画识别框 + 标签；标签位置/大小/颜色、框颜色/线宽按设置渲染；
+ * 标签间自动防重叠（后放置的标签与已有标签冲突时下移），避免互相遮挡。
  */
 private fun DrawScope.drawOverlay(
-    hits: List<Pair<RectF, String>>
+    hits: List<Pair<RectF, String>>,
+    settings: AppSettings
 ) {
     if (hits.isEmpty()) return
-    val topIndex = hits.indices.minByOrNull { hits[it].first.top } ?: 0
-    for (i in hits.indices) {
-        val (hit, label) = hits[i]
+
+    // 识别框样式：线宽为连续值（dp），直接使用设置值
+    val boxColor = ComposeColor(BOX_COLORS[settings.boxColor] ?: DEFAULT_HIT_COLOR)
+    val strokeWidthPx = settings.boxWidth.dp.toPx()
+    // 标签文字样式：字号为连续值（sp），直接使用设置值
+    val labelTextColor = LABEL_TEXT_COLORS[settings.labelColor] ?: Color.WHITE
+    val labelBgColor = BOX_COLORS[settings.boxColor] ?: DEFAULT_HIT_COLOR
+    val textSizeSp = settings.labelSize
+
+    // 按 top 排序绘制，保证防重叠计算稳定
+    val sorted = hits.sortedBy { it.first.top }
+    val placedLabels = ArrayList<RectF>() // 已放置的标签区域（防重叠）
+
+    for ((hit, label) in sorted) {
         drawRect(
-            color = ComposeColor(0xFFE53935),
+            color = boxColor,
             topLeft = Offset(hit.left, hit.top),
             size = ComposeSize(hit.width(), hit.height()),
-            style = Stroke(width = HIT_STROKE_DP.dp.toPx())
+            style = Stroke(width = strokeWidthPx)
         )
-        if (i != topIndex) continue
-        // 仅最上方命中画标签；标签限定在预览宽度内，避免横向越界
+        // 每个匹配框都画标签：文字 + 底色背景
         val fullLabel = "已找到 ${label}"
         val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            textSize = 22.sp.toPx()
+            color = labelTextColor
+            textSize = textSizeSp.sp.toPx()
             isFakeBoldText = true
         }
         val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0xFFE53935.toInt()
+            color = labelBgColor
             style = Paint.Style.FILL
         }
         val pad = 8.dp.toPx()
         val labelWidth = textPaint.measureText(fullLabel)
+        val labelHeight = textPaint.textSize + pad * 2
         val maxRight = this.size.width
-        val labelLeft = (hit.left).coerceIn(2.dp.toPx(), (maxRight - labelWidth - pad * 2).coerceAtLeast(2.dp.toPx()))
-        val labelTop = (hit.top - 44.dp.toPx()).coerceAtLeast(2.dp.toPx())
+
+        // 水平位置：与框左对齐，限定在预览宽度内
+        val labelLeft = (hit.left).coerceIn(
+            2.dp.toPx(),
+            (maxRight - labelWidth - pad * 2).coerceAtLeast(2.dp.toPx())
+        )
         val labelRight = labelLeft + labelWidth + pad * 2
-        val labelBottom = labelTop + textPaint.textSize + pad * 2
+
+        // 垂直位置：上方 / 框内 / 下方
+        var labelTop = when (settings.labelPosition) {
+            "inside" -> hit.top + (hit.height() - labelHeight) / 2f
+            "below" -> hit.bottom + 4.dp.toPx()
+            else -> hit.top - labelHeight - 4.dp.toPx()   // above：框上方
+        }
+
+        // 防重叠：与已放置的标签区域冲突则逐级下移
+        var guard = 0
+        while (
+            placedLabels.any { rectsOverlap(RectF(labelLeft, labelTop, labelRight, labelTop + labelHeight), it) } &&
+            guard < 30
+        ) {
+            labelTop += labelHeight + 2.dp.toPx()
+            guard++
+        }
+        labelTop = labelTop.coerceAtLeast(2.dp.toPx())
+        // 超出预览底部时回退到框上方
+        if (labelTop + labelHeight > this.size.height - 2.dp.toPx()) {
+            labelTop = (hit.top - labelHeight - 4.dp.toPx()).coerceAtLeast(2.dp.toPx())
+        }
+        placedLabels.add(RectF(labelLeft, labelTop, labelRight, labelTop + labelHeight))
+
         drawContext.canvas.nativeCanvas.drawRoundRect(
-            labelLeft, labelTop, labelRight, labelBottom,
+            labelLeft, labelTop, labelRight, labelTop + labelHeight,
             6.dp.toPx(), 6.dp.toPx(), bgPaint
         )
         drawContext.canvas.nativeCanvas.drawText(
-            fullLabel, labelLeft + pad, labelBottom - pad, textPaint
+            fullLabel, labelLeft + pad, labelTop + labelHeight - pad, textPaint
         )
     }
 }
+
+/** 两个矩形是否相交（标签防重叠用） */
+private fun rectsOverlap(a: RectF, b: RectF): Boolean =
+    a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
 
 /**
  * 实时扫描器：CameraX ImageAnalysis 逐帧 OCR + 多目标匹配（复用 LiveScanFragment 逻辑）。
@@ -835,8 +902,6 @@ private class LiveScanner(
     private fun onFrameRecognized(visionText: Text, imageProxy: ImageProxy, cropLeft: Int, cropTop: Int) {
         val targets = getTargets()
         val fuzzy = getFuzzy()
-        val frameText = visionText.text.orEmpty()
-        val allCodes = PickupCodeExtractor.extractAll(frameText)
         if (targets.isEmpty()) {
             // 无目标：清空标注
             hitStreak = 0
@@ -845,28 +910,22 @@ private class LiveScanner(
             mainHandler.post { onClear() }
             return
         }
-        // 收集所有与任一目标匹配的码及其位置（同一文本块内可能含多个码，全部收集）
-        val hits = LinkedHashMap<String, RectF>()
+        // 收集所有与任一目标匹配的文本块：每个文本块生成一个标注框（框 + 标签），
+        // 同一取件码出现在多个面单/位置时全部保留，标签为该块内命中的全部码
+        val frameHits = ArrayList<Pair<RectF, String>>()
+        val matchedCodes = LinkedHashSet<String>()
         for (block in visionText.textBlocks) {
             val codes = PickupCodeExtractor.extractAll(block.text)
             if (codes.isEmpty()) continue
             val box = block.boundingBox ?: continue
-            for (code in codes) {
-                if (!hits.containsKey(code) &&
-                    targets.any { CodeMatcher.matches(it, code, fuzzy) }
-                ) {
-                    hits[code] = mapToPreview(box, imageProxy, cropLeft, cropTop)
-                }
-            }
-        }
-        // 全图兜底：若文本块级未命中但 extractAll 有命中，按无框处理（不画框）
-        val matchedSet = hits.keys
-        if (allCodes.any { c -> targets.any { CodeMatcher.matches(it, c, fuzzy) } } && matchedSet.isEmpty()) {
-            // 理论上不会发生（同一文本肯定在某个 block 中），忽略
+            val matched = codes.filter { code -> targets.any { CodeMatcher.matches(it, code, fuzzy) } }
+            if (matched.isEmpty()) continue
+            matchedCodes.addAll(matched)
+            frameHits.add(mapToPreview(box, imageProxy, cropLeft, cropTop) to matched.joinToString("、"))
         }
 
         val now = System.currentTimeMillis()
-        if (hits.isNotEmpty()) {
+        if (frameHits.isNotEmpty()) {
             // 连续命中帧计数：达到 DEBOUNCE_FRAMES 才判定命中（去抖防误报）
             hitStreak++
             if (hitStreak >= DEBOUNCE_FRAMES) {
@@ -876,11 +935,10 @@ private class LiveScanner(
                     vibrated = true
                     onVibrate()
                 }
-                val result = hits.map { (code, box) -> box to code }
                 mainHandler.post {
-                    onHits(result)
+                    onHits(frameHits)
                     // 命中的每个取件码上报，用于列表标记「已取件」
-                    hits.keys.forEach { onPickedUp(it) }
+                    matchedCodes.forEach { onPickedUp(it) }
                 }
             }
         } else {

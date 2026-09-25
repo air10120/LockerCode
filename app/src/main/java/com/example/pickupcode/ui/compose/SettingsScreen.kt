@@ -29,6 +29,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -45,13 +46,21 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.example.pickupcode.BuildConfig
+import kotlin.math.roundToInt
 
-/** 应用设置项：跳帧间隔（自动/手动）、分析分辨率、识别震动开关 */
+/** 应用设置项：跳帧间隔（自动/手动）、分析分辨率、识别震动开关、标注样式 */
 data class AppSettings(
     val analyzeMode: String = "auto",        // "auto" 自动自适应 / "manual" 手动固定
     val manualIntervalMs: Long = 300L,       // 手动跳帧间隔（ms）
     val analyzeResolution: String = "1080p", // "720p" / "1080p"
-    val vibrateEnabled: Boolean = true       // 识别到取件码是否震动
+    val vibrateEnabled: Boolean = true,      // 识别到取件码是否震动
+    // 标签文字样式
+    val labelSize: Float = 22f,              // 标签文字字号（sp），滑块范围 10~36
+    val labelPosition: String = "above",     // "above" 上方 / "inside" 框内 / "below" 下方
+    val labelColor: String = "white",        // 标签文字颜色（预设 key，见 LABEL_TEXT_COLORS）
+    // 识别框样式
+    val boxColor: String = "red",            // 识别框颜色（预设 key，见 BOX_COLORS）
+    val boxWidth: Float = 6f                 // 识别框线宽（dp），滑块范围 1~8
 )
 
 private const val PREFS_NAME = "app_settings"
@@ -63,7 +72,12 @@ fun loadSettings(context: Context): AppSettings {
         analyzeMode = sp.getString("analyze_mode", "auto") ?: "auto",
         manualIntervalMs = sp.getLong("manual_interval_ms", 300L),
         analyzeResolution = sp.getString("analyze_resolution", "1080p") ?: "1080p",
-        vibrateEnabled = sp.getBoolean("vibrate_enabled", true)
+        vibrateEnabled = sp.getBoolean("vibrate_enabled", true),
+        labelSize = sp.getFloat("label_size", 22f),
+        labelPosition = sp.getString("label_position", "above") ?: "above",
+        labelColor = sp.getString("label_color", "white") ?: "white",
+        boxColor = sp.getString("box_color", "red") ?: "red",
+        boxWidth = sp.getFloat("box_width", 6f)
     )
 }
 
@@ -75,16 +89,56 @@ fun saveSettings(context: Context, settings: AppSettings) {
         .putLong("manual_interval_ms", settings.manualIntervalMs)
         .putString("analyze_resolution", settings.analyzeResolution)
         .putBoolean("vibrate_enabled", settings.vibrateEnabled)
+        .putFloat("label_size", settings.labelSize)
+        .putString("label_position", settings.labelPosition)
+        .putString("label_color", settings.labelColor)
+        .putString("box_color", settings.boxColor)
+        .putFloat("box_width", settings.boxWidth)
         .apply()
 }
 
 private val MANUAL_INTERVALS = listOf(150L, 200L, 250L, 300L, 400L)
+
+// ===== 标注样式选项 =====
+/** 标签文字相对识别框的位置 */
+private val LABEL_POSITIONS = listOf(
+    "above" to "上方",
+    "inside" to "框内",
+    "below" to "下方"
+)
+
+/** 标签文字颜色预设（key → 显示名） */
+private val LABEL_TEXT_COLORS = listOf(
+    "white" to "白",
+    "black" to "黑",
+    "red" to "红",
+    "green" to "绿",
+    "blue" to "蓝",
+    "orange" to "橙",
+    "purple" to "紫"
+)
+
+/** 识别框颜色预设（key → 显示名） */
+private val BOX_COLORS = listOf(
+    "red" to "红",
+    "green" to "绿",
+    "blue" to "蓝",
+    "orange" to "橙",
+    "purple" to "紫",
+    "white" to "白"
+)
 
 /** 单条更新日志：版本号 + 更新内容列表 */
 private data class ChangelogEntry(val version: String, val items: List<String>)
 
 /** 历史更新日志（按版本倒序） */
 private val CHANGELOG = listOf(
+    ChangelogEntry(
+        "v1.0.11", listOf(
+            "修复：识别框支持同时标注多个匹配目标",
+            "新增：设置页个性化（标签文字大小滑块、标签位置、标签颜色、识别框颜色、识别框线宽滑块）"
+        )
+    ),
     ChangelogEntry(
         "v1.0.8", listOf(
             "修复多个取件码同时识别漏检：识别区域扩大至中央 90%",
@@ -277,6 +331,124 @@ fun SettingsScreen(
                         onCheckedChange = { onChange(settings.copy(vibrateEnabled = it)) }
                     )
                 }
+            }
+            Spacer(Modifier.height(20.dp))
+
+            // ===== 标签文字样式 =====
+            Text(
+                "标签文字",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "自定义识别框上「已找到」标签的文字大小、位置与颜色",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "文字大小",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Slider(
+                    value = settings.labelSize,
+                    onValueChange = { onChange(settings.copy(labelSize = it)) },
+                    valueRange = 10f..36f,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    "${settings.labelSize.roundToInt()}sp",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "文字位置",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for ((key, name) in LABEL_POSITIONS) {
+                    FilterChip(
+                        selected = settings.labelPosition == key,
+                        onClick = { onChange(settings.copy(labelPosition = key)) },
+                        label = { Text(name) }
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "文字颜色",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(6.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for ((key, name) in LABEL_TEXT_COLORS) {
+                    FilterChip(
+                        selected = settings.labelColor == key,
+                        onClick = { onChange(settings.copy(labelColor = key)) },
+                        label = { Text(name) }
+                    )
+                }
+            }
+            Spacer(Modifier.height(20.dp))
+
+            // ===== 识别框样式 =====
+            Text(
+                "识别框",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "自定义匹配目标的识别框颜色与线宽",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "框颜色",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(6.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for ((key, name) in BOX_COLORS) {
+                    FilterChip(
+                        selected = settings.boxColor == key,
+                        onClick = { onChange(settings.copy(boxColor = key)) },
+                        label = { Text(name) }
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "框线宽",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Slider(
+                    value = settings.boxWidth,
+                    onValueChange = { onChange(settings.copy(boxWidth = it)) },
+                    valueRange = 1f..8f,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    "${settings.boxWidth.roundToInt()}dp",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
             }
             Spacer(Modifier.height(20.dp))
 
