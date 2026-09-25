@@ -841,7 +841,9 @@ private class LiveScanner(
     private var hitStreak = 0   // 连续命中帧计数（去抖：连续 DEBOUNCE_FRAMES 帧命中才判定）
     private var vibrated = false
     private var ocrCostMs = DEFAULT_ANALYZE_INTERVAL_MS.toFloat() // 实测 OCR 耗时平滑值（自动模式用）
-    private var lastFrameHits: List<Pair<RectF, String>> = emptyList() // 上一帧命中框缓存，用于坐标平滑抑制跳动
+    private var lastFrameHits: List<Pair<RectF, String>> = emptyList() // 上一帧输出命中框缓存，用于坐标平滑抑制跳动
+    private val persistentHits = LinkedHashMap<String, Pair<RectF, Long>>() // 跨帧命中持久缓存：取件码 → (框, 最近命中时间)，按码合并 + 过期清理，实现多目标稳定同显
+    private val reportedCodes = HashSet<String>() // 已上报「已取件」的码（保持期内命中帧不重复上报）
 
     /** 当前生效的跳帧间隔：自动模式按实测 OCR 耗时动态调节，手动模式用固定值 */
     private fun currentIntervalMs(): Long {
@@ -904,10 +906,12 @@ private class LiveScanner(
         val targets = getTargets()
         val fuzzy = getFuzzy()
         if (targets.isEmpty()) {
-            // 无目标：清空标注
+            // 无目标：清空标注与持久缓存
             hitStreak = 0
             hitOnce = false
             vibrated = false
+            persistentHits.clear()
+            reportedCodes.clear()
             lastFrameHits = emptyList()
             mainHandler.post { onClear() }
             return
@@ -928,44 +932,51 @@ private class LiveScanner(
 
         val now = System.currentTimeMillis()
         if (frameHits.isNotEmpty()) {
-            if (hitOnce) {
-                // 已进入保持状态：命中帧立即更新框坐标并续期保持窗口，无需重新累计去抖帧（避免闪没后再等 2 帧）
-                lastHitTime = now
-                val smoothed = smoothHits(frameHits)
-                mainHandler.post {
-                    onHits(smoothed)
-                    // 命中的每个取件码上报，用于列表标记「已取件」
-                    matchedCodes.forEach { onPickedUp(it) }
-                }
-            } else {
-                // 首次命中：连续命中 DEBOUNCE_FRAMES 帧才判定命中（去抖防误报）
+            if (!hitOnce) {
+                // 首次上屏判定：连续命中 DEBOUNCE_FRAMES 帧才判定命中（去抖防误报）
                 hitStreak++
-                if (hitStreak >= DEBOUNCE_FRAMES) {
-                    hitOnce = true
-                    lastHitTime = now
-                    if (!vibrated) {
-                        vibrated = true
-                        onVibrate()
-                    }
-                    val smoothed = smoothHits(frameHits)
-                    mainHandler.post {
-                        onHits(smoothed)
-                        // 命中的每个取件码上报，用于列表标记「已取件」
-                        matchedCodes.forEach { onPickedUp(it) }
-                    }
+                if (hitStreak < DEBOUNCE_FRAMES) return
+                hitOnce = true
+                if (!vibrated) {
+                    vibrated = true
+                    onVibrate()
+                }
+            }
+            // 进入保持后：对当帧每个命中做 upsert（更新框坐标 + 续期最近命中时间），
+            // 不整体覆盖旧结果——即使本帧只识别到部分目标，其余码的框也能继续保留
+            lastHitTime = now
+            for ((rect, label) in frameHits) {
+                persistentHits[label] = rect to now
+            }
+        } else {
+            // 未命中帧：不清除持久缓存，只做过期清理（按码保持，避免某帧漏检导致该码闪没）
+            hitStreak = 0
+        }
+
+        // 每帧末尾统一清理：移除超过保持窗口未再命中的码（按码过期，而非整帧清空）
+        val expired = persistentHits.entries.filter { now - it.value.second > HIT_HOLD_MS }.map { it.key }
+        if (expired.isNotEmpty()) {
+            expired.forEach {
+                persistentHits.remove(it)
+                reportedCodes.remove(it)
+            }
+            lastFrameHits = emptyList() // 目标集合变化，重置平滑缓存防错配
+        }
+
+        if (persistentHits.isNotEmpty()) {
+            val smoothed = smoothHits(persistentHits.map { it.value.first to it.key })
+            mainHandler.post {
+                onHits(smoothed)
+                // 仅对首次命中的码上报「已取件」，保持期内重复识别不重复上报
+                matchedCodes.forEach { code ->
+                    if (reportedCodes.add(code)) onPickedUp(code)
                 }
             }
         } else {
-            hitStreak = 0
-            if (hitOnce && now - lastHitTime < HIT_HOLD_MS) {
-                // 保持窗口内短暂丢失：保留旧命中框（onKeep 不更新坐标，框保持不闪没）
-                mainHandler.post { onKeep() }
-            } else {
-                hitOnce = false
-                vibrated = false
-                lastFrameHits = emptyList()
-                mainHandler.post { onClear() }
-            }
+            hitOnce = false
+            vibrated = false
+            lastFrameHits = emptyList()
+            mainHandler.post { onClear() }
         }
     }
 
