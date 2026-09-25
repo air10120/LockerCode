@@ -1,3 +1,14 @@
+---
+AIGC:
+    Label: "1"
+    ContentProducer: 001191440300708461136T1XGW3
+    ProduceID: c226c988c4ae1226f6aeeb801a0caa8b_3dec220cb87811f1b24b525400ea19b7
+    ReservedCode1: hOk5gHEydnxsw2gOGZRr6/AKHcUoPWvi/BGLS/STJdVmfIGeNLuEK6tyYQ1tEfPIoNfRVbDzExbnyP6GXD7ksr4AL1ci5jBs6v86waMdTrccJcfP5u/AR2urFZ8mQUybnpm12Wxz0Dgg/qE7r3q5iH9s9+GRR5M8h0k+osrj1WGo1+oiSRHN+107LBU=
+    ContentPropagator: 001191440300708461136T1XGW3
+    PropagateID: c226c988c4ae1226f6aeeb801a0caa8b_3dec220cb87811f1b24b525400ea19b7
+    ReservedCode2: hOk5gHEydnxsw2gOGZRr6/AKHcUoPWvi/BGLS/STJdVmfIGeNLuEK6tyYQ1tEfPIoNfRVbDzExbnyP6GXD7ksr4AL1ci5jBs6v86waMdTrccJcfP5u/AR2urFZ8mQUybnpm12Wxz0Dgg/qE7r3q5iH9s9+GRR5M8h0k+osrj1WGo1+oiSRHN+107LBU=
+---
+
 # 极简取件码识别 APP（PickupCode）
 
 一个**纯本地、极简**的安卓取件码识别应用：手动输入快递取件码后，打开相机**实时扫描**驿站货架上的快递面单，OCR 自动识别面单上的取件码并与目标码**容错匹配**，命中即高亮提示，帮你快速定位目标快递。
@@ -178,3 +189,4 @@ OCR 对相似字符经常误识别，本项目内置混淆字符映射表，开�
 - 开源仅用于学习交流，请勿用于非法用途。
 
 *（内容由 AI 生成，仅供参考，请以实际代码为准）*
+*（内容由AI生成，仅供参考）*
