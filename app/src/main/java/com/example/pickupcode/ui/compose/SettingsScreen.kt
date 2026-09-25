@@ -1,6 +1,7 @@
 package com.example.pickupcode.ui.compose
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -65,6 +66,33 @@ data class AppSettings(
 
 private const val PREFS_NAME = "app_settings"
 
+/**
+ * 兼容读取 Float 设置：v1.0.11 之前（中间测试版）将 label_size / box_width
+ * 存为 String（枚举名或数字字符串），现改为 Float 后直接 getFloat 读旧数据
+ * 会抛 ClassCastException。这里先尝试 getFloat，类型不匹配时按旧值迁移映射，
+ * 并顺手把迁移结果写回 SharedPreferences，避免每次启动都走异常分支。
+ */
+private fun readFloatCompat(sp: SharedPreferences, key: String, default: Float): Float {
+    return try {
+        sp.getFloat(key, default)
+    } catch (e: ClassCastException) {
+        // 旧版存的是 String（枚举名/数字字符串），做映射迁移
+        val v = sp.getString(key, null)?.trim()?.lowercase()
+        val mapped = when (v) {
+            "small" -> 14f; "medium" -> 22f; "large" -> 30f   // 旧文字大小三档
+            "thin" -> 2f; "standard" -> 6f; "thick" -> 8f     // 旧框线宽三档
+            else -> null
+        }
+        val result = mapped ?: v?.toFloatOrNull() ?: default
+        // 迁移回写：下次直接 getFloat 命中，不再走异常分支
+        try {
+            sp.edit().putFloat(key, result).apply()
+        } catch (_: Exception) {
+        }
+        result
+    }
+}
+
 /** 从 SharedPreferences 读取设置（缺失项用默认值兜底） */
 fun loadSettings(context: Context): AppSettings {
     val sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -73,11 +101,11 @@ fun loadSettings(context: Context): AppSettings {
         manualIntervalMs = sp.getLong("manual_interval_ms", 300L),
         analyzeResolution = sp.getString("analyze_resolution", "1080p") ?: "1080p",
         vibrateEnabled = sp.getBoolean("vibrate_enabled", true),
-        labelSize = sp.getFloat("label_size", 22f),
+        labelSize = readFloatCompat(sp, "label_size", 22f),
         labelPosition = sp.getString("label_position", "above") ?: "above",
         labelColor = sp.getString("label_color", "white") ?: "white",
         boxColor = sp.getString("box_color", "red") ?: "red",
-        boxWidth = sp.getFloat("box_width", 6f)
+        boxWidth = readFloatCompat(sp, "box_width", 6f)
     )
 }
 
