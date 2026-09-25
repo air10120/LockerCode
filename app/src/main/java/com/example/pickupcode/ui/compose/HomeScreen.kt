@@ -111,7 +111,7 @@ private const val AUTO_INTERVAL_MARGIN_MS = 120L      // 自动模式：间隔 =
 private const val AUTO_INTERVAL_MIN_MS = 150L         // 自动模式间隔下限
 private const val AUTO_INTERVAL_MAX_MS = 800L         // 自动模式间隔上限
 private const val CROP_RATIO = 0.05f           // 中央 90% ROI 裁剪（上下左右各去 5%）：扩大识别区域，多个快递分布开也能命中
-private const val HIT_HOLD_MS = 800L           // 命中后短暂保持标注
+private const val HIT_HOLD_MS = 1500L          // 命中保持窗口：命中后保留约 1.5s，期间个别帧未命中也不清框，超时未命中才清除
 
 /** 默认命中框颜色（红） */
 private const val DEFAULT_HIT_COLOR = 0xFFE53935.toInt()
@@ -841,6 +841,7 @@ private class LiveScanner(
     private var hitStreak = 0   // 连续命中帧计数（去抖：连续 DEBOUNCE_FRAMES 帧命中才判定）
     private var vibrated = false
     private var ocrCostMs = DEFAULT_ANALYZE_INTERVAL_MS.toFloat() // 实测 OCR 耗时平滑值（自动模式用）
+    private var lastFrameHits: List<Pair<RectF, String>> = emptyList() // 上一帧命中框缓存，用于坐标平滑抑制跳动
 
     /** 当前生效的跳帧间隔：自动模式按实测 OCR 耗时动态调节，手动模式用固定值 */
     private fun currentIntervalMs(): Long {
@@ -907,6 +908,7 @@ private class LiveScanner(
             hitStreak = 0
             hitOnce = false
             vibrated = false
+            lastFrameHits = emptyList()
             mainHandler.post { onClear() }
             return
         }
@@ -926,32 +928,76 @@ private class LiveScanner(
 
         val now = System.currentTimeMillis()
         if (frameHits.isNotEmpty()) {
-            // 连续命中帧计数：达到 DEBOUNCE_FRAMES 才判定命中（去抖防误报）
-            hitStreak++
-            if (hitStreak >= DEBOUNCE_FRAMES) {
-                hitOnce = true
+            if (hitOnce) {
+                // 已进入保持状态：命中帧立即更新框坐标并续期保持窗口，无需重新累计去抖帧（避免闪没后再等 2 帧）
                 lastHitTime = now
-                if (!vibrated) {
-                    vibrated = true
-                    onVibrate()
-                }
+                val smoothed = smoothHits(frameHits)
                 mainHandler.post {
-                    onHits(frameHits)
+                    onHits(smoothed)
                     // 命中的每个取件码上报，用于列表标记「已取件」
                     matchedCodes.forEach { onPickedUp(it) }
+                }
+            } else {
+                // 首次命中：连续命中 DEBOUNCE_FRAMES 帧才判定命中（去抖防误报）
+                hitStreak++
+                if (hitStreak >= DEBOUNCE_FRAMES) {
+                    hitOnce = true
+                    lastHitTime = now
+                    if (!vibrated) {
+                        vibrated = true
+                        onVibrate()
+                    }
+                    val smoothed = smoothHits(frameHits)
+                    mainHandler.post {
+                        onHits(smoothed)
+                        // 命中的每个取件码上报，用于列表标记「已取件」
+                        matchedCodes.forEach { onPickedUp(it) }
+                    }
                 }
             }
         } else {
             hitStreak = 0
             if (hitOnce && now - lastHitTime < HIT_HOLD_MS) {
-                // 短暂丢失：保留旧命中框（持续追踪不冻结）
+                // 保持窗口内短暂丢失：保留旧命中框（onKeep 不更新坐标，框保持不闪没）
                 mainHandler.post { onKeep() }
             } else {
                 hitOnce = false
                 vibrated = false
+                lastFrameHits = emptyList()
                 mainHandler.post { onClear() }
             }
         }
+    }
+
+    /**
+     * 坐标平滑：与上一帧按标签配对，中心位移小于阈值（预览宽 2%）的框沿用旧坐标，
+     * 抑制 OCR 抖动导致的相邻帧跳动；目标真实移动或目标集合变化时直接采用新坐标。
+     */
+    private fun smoothHits(frameHits: List<Pair<RectF, String>>): List<Pair<RectF, String>> {
+        val prev = lastFrameHits
+        if (prev.isEmpty() || prev.size != frameHits.size) {
+            lastFrameHits = frameHits
+            return frameHits
+        }
+        val w = previewSize().width.toFloat()
+        val threshold = if (w > 0f) w * 0.02f else 0f
+        val prevByLabel = HashMap<String, RectF>()
+        prev.forEach { prevByLabel[it.second] = it.first }
+        val result = ArrayList<Pair<RectF, String>>(frameHits.size)
+        for (hit in frameHits) {
+            val old = prevByLabel[hit.second]
+            if (old != null && threshold > 0f &&
+                kotlin.math.abs(hit.first.centerX() - old.centerX()) < threshold &&
+                kotlin.math.abs(hit.first.centerY() - old.centerY()) < threshold
+            ) {
+                // 位移很小：沿用旧框坐标（标签取新识别值），抑制相邻帧跳动
+                result.add(old to hit.second)
+            } else {
+                result.add(hit)
+            }
+        }
+        lastFrameHits = result
+        return result
     }
 
     /** 图像坐标系 → 预览显示坐标系（fitCenter 等比缩放 + 黑边偏移） */
